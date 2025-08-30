@@ -2,41 +2,41 @@
 print("\n\n  -- Computing CSV Results\n")
 results = []
 
-def compute_mc_dropout_stats(mc_dropout_data, num_iter, mc_samples):
+def compute_uq_stats(uq_data, num_iter, uq_samples):
     """
-    Compute statistics for MC dropout estimates.
+    Compute statistics for uncertainty quantification estimates.
 
-    mc_dropout_data: list of lists, where each inner list contains mc_samples estimates for one iteration
+    uq_data: list of lists, where each inner list contains uq_samples estimates for one iteration
     """
-    if not mc_dropout_data:
+    if not uq_data:
         return {
-            'mc_mean': np.nan, 'mc_std_dev_0': np.nan, 'mc_std_dev_1': np.nan,
-            'mc_std_error_0': np.nan, 'mc_std_error_1': np.nan,
-            'mc_within_iter_mean_std': np.nan, 'mc_between_iter_std': np.nan
+            'uq_mean': np.nan, 'uq_std_dev_0': np.nan, 'uq_std_dev_1': np.nan,
+            'uq_std_error_0': np.nan, 'uq_std_error_1': np.nan,
+            'uq_within_iter_mean_std': np.nan, 'uq_between_iter_std': np.nan
         }
 
-    # Flatten all MC dropout estimates across all iterations
-    all_mc_estimates = [est for iter_estimates in mc_dropout_data for est in iter_estimates]
+    # Flatten all UQ estimates across all iterations
+    all_uq_estimates = [est for iter_estimates in uq_data for est in iter_estimates]
 
     # Within-iteration variability (average std dev across iterations)
     within_iter_stds = [np.std(iter_estimates, ddof=1) if len(iter_estimates) > 1 else 0
-                      for iter_estimates in mc_dropout_data]
-    mc_within_iter_mean_std = np.mean(within_iter_stds)
-    mc_within_iter_std_of_std = np.std(within_iter_stds, ddof=1) if len(within_iter_stds) > 1 else 0
+                      for iter_estimates in uq_data]
+    uq_within_iter_mean_std = np.mean(within_iter_stds)
+    uq_within_iter_std_of_std = np.std(within_iter_stds, ddof=1) if len(within_iter_stds) > 1 else 0
 
     # Between-iteration variability (std dev of iteration means)
-    iter_means = [np.mean(iter_estimates) for iter_estimates in mc_dropout_data]
-    mc_between_iter_std = np.std(iter_means, ddof=1) if len(iter_means) > 1 else 0
+    iter_means = [np.mean(iter_estimates) for iter_estimates in uq_data]
+    uq_between_iter_std = np.std(iter_means, ddof=1) if len(iter_means) > 1 else 0
 
     return {
-        'mc_mean': np.mean(all_mc_estimates),
-        'mc_std_dev_0': np.std(all_mc_estimates),
-        'mc_std_dev_1': np.std(all_mc_estimates, ddof=1),
-        'mc_std_error_0': np.std(all_mc_estimates) / np.sqrt(len(all_mc_estimates)),
-        'mc_std_error_1': np.std(all_mc_estimates, ddof=1) / np.sqrt(len(all_mc_estimates)),
-        'mc_within_iter_mean_std': mc_within_iter_mean_std,
-        'mc_within_iter_std_of_std': mc_within_iter_std_of_std,
-        'mc_between_iter_std': mc_between_iter_std
+        'uq_mean': np.mean(all_uq_estimates),
+        'uq_std_dev_0': np.std(all_uq_estimates),
+        'uq_std_dev_1': np.std(all_uq_estimates, ddof=1),
+        'uq_std_error_0': np.std(all_uq_estimates) / np.sqrt(len(all_uq_estimates)),
+        'uq_std_error_1': np.std(all_uq_estimates, ddof=1) / np.sqrt(len(all_uq_estimates)),
+        'uq_within_iter_mean_std': uq_within_iter_mean_std,
+        'uq_within_iter_std_of_std': uq_within_iter_std_of_std,
+        'uq_between_iter_std': uq_between_iter_std
     }
 
 if mode in ['upstream', 'both']:
@@ -44,39 +44,37 @@ if mode in ['upstream', 'both']:
         ['joint', 'two_stage', 'infeasible'],
         [dict_upstream_joint, dict_upstream_two_stage, dict_upstream_infeasible]
     ):
-        # Get corresponding MC dropout dictionary
+        # Get corresponding UQ dictionary
         if approach_name == 'joint':
-            mc_dropout_dict = store['upstream']['percentile']['joint']
+            uq_dict = store['upstream']['percentile']['joint']
         elif approach_name == 'two_stage':
-            mc_dropout_dict = store['upstream']['percentile']['two_stage']
-        else:  # infeasible - no MC dropout for this
-            mc_dropout_dict = {k: [] for k in range(num_topics)}
+            uq_dict = store['upstream']['percentile']['two_stage']
+        else:  # infeasible - no UQ for this
+            uq_dict = {k: [] for k in range(num_topics)}
 
         for topic in range(num_topics):
-            # Parametric bootstrap estimates (across iterations)
-            bootstrap_estimates = upstream_dict[topic]
+            # Monte Carlo estimates (across iterations)
+            uq_estimates = upstream_dict[topic]
 
-            # Standard coverage calculation
-            standard_coverage = upstream_coverage[approach_name][topic] / num_iter
+            # Monte Carlo coverage calculation
+            mc_coverage = upstream_coverage[approach_name][topic] / num_iter
 
-            # MC dropout coverage calculation
-            mc_dropout_coverage = 0
+            # UQ coverage calculation
+            uq_coverage = 0
             if approach_name != 'infeasible':
-                # dropout_key = f"{approach_name}_dropout"
-                # if dropout_key in upstream_coverage:
-                mc_dropout_coverage = upstream_coverage_mc[approach_name][topic] / num_iter
+                uq_coverage = upstream_coverage_uq[approach_name][topic] / num_iter
 
-            # MC dropout coverage calculation (Normal-based intervals)
-            mc_dropout_coverage_norm = 0
+            # UQ coverage calculation (Normal-based intervals)
+            uq_coverage_norm = 0
             if approach_name != 'infeasible':
-                mc_dropout_coverage_norm = upstream_coverage_mc[approach_name + "_norm"][topic] / num_iter
+                uq_coverage_norm = upstream_coverage_uq[approach_name + "_norm"][topic] / num_iter
 
-            # Compute MC dropout statistics
-            mc_stats = compute_mc_dropout_stats(mc_dropout_dict[topic], num_iter, laplace_samples) if approach_name != 'infeasible' else {
-                'mc_mean': np.nan, 'mc_std_dev_0': np.nan, 'mc_std_dev_1': np.nan,
-                'mc_std_error_0': np.nan, 'mc_std_error_1': np.nan,
-                'mc_within_iter_mean_std': np.nan, 'mc_within_iter_std_of_std': np.nan,
-                'mc_between_iter_std': np.nan
+            # Compute UQ statistics
+            uq_stats = compute_uq_stats(uq_dict[topic], num_iter, uq_samples) if approach_name != 'infeasible' else {
+                'uq_mean': np.nan, 'uq_std_dev_0': np.nan, 'uq_std_dev_1': np.nan,
+                'uq_std_error_0': np.nan, 'uq_std_error_1': np.nan,
+                'uq_within_iter_mean_std': np.nan, 'uq_within_iter_std_of_std': np.nan,
+                'uq_between_iter_std': np.nan
             }
 
             results.append({
@@ -85,31 +83,31 @@ if mode in ['upstream', 'both']:
                 'topic': topic,
                 'true_value': lambda_[1, topic],
 
-                # Parametric Bootstrap Statistics (across iterations)
-                'bootstrap_mean': np.mean(bootstrap_estimates),
-                'bootstrap_std_dev_0': np.std(bootstrap_estimates),
-                'bootstrap_std_dev_1': np.std(bootstrap_estimates, ddof=1) if len(bootstrap_estimates) > 1 else np.nan,
-                'bootstrap_std_error_0': np.std(bootstrap_estimates) / np.sqrt(len(bootstrap_estimates)) if len(bootstrap_estimates) > 0 else np.nan,
-                'bootstrap_std_error_1': np.std(bootstrap_estimates, ddof=1) / np.sqrt(len(bootstrap_estimates)) if len(bootstrap_estimates) > 1 else np.nan,
+                # Monte Carlo Statistics (across iterations)
+                'mc_mean': np.mean(uq_estimates),
+                'mc_std_dev_0': np.std(uq_estimates),
+                'mc_std_dev_1': np.std(uq_estimates, ddof=1) if len(uq_estimates) > 1 else np.nan,
+                'mc_std_error_0': np.std(uq_estimates) / np.sqrt(len(uq_estimates)) if len(uq_estimates) > 0 else np.nan,
+                'mc_std_error_1': np.std(uq_estimates, ddof=1) / np.sqrt(len(uq_estimates)) if len(uq_estimates) > 1 else np.nan,
 
-                # MC Dropout Statistics (within and across iterations)
-                'mc_dropout_mean': mc_stats['mc_mean'],
-                'mc_dropout_std_dev_0': mc_stats['mc_std_dev_0'],
-                'mc_dropout_std_dev_1': mc_stats['mc_std_dev_1'],
-                'mc_dropout_std_error_0': mc_stats['mc_std_error_0'],
-                'mc_dropout_std_error_1': mc_stats['mc_std_error_1'],
-                'mc_dropout_within_iter_std': mc_stats['mc_within_iter_mean_std'],
-                'mc_dropout_within_iter_std_of_std': mc_stats['mc_within_iter_std_of_std'],
-                'mc_dropout_between_iter_std': mc_stats['mc_between_iter_std'],
+                # UQ Statistics (within and across iterations)
+                'uq_mean': uq_stats['uq_mean'],
+                'uq_std_dev_0': uq_stats['uq_std_dev_0'],
+                'uq_std_dev_1': uq_stats['uq_std_dev_1'],
+                'uq_std_error_0': uq_stats['uq_std_error_0'],
+                'uq_std_error_1': uq_stats['uq_std_error_1'],
+                'uq_within_iter_std': uq_stats['uq_within_iter_mean_std'],
+                'uq_within_iter_std_of_std': uq_stats['uq_within_iter_std_of_std'],
+                'uq_between_iter_std': uq_stats['uq_between_iter_std'],
 
                 # Coverage rates
-                'coverage_standard': standard_coverage,
-                'coverage_mc_dropout': mc_dropout_coverage,
-                'coverage_mc_dropout_norm': mc_dropout_coverage_norm,
+                'coverage_mc': mc_coverage,
+                'coverage_uq_dropout': uq_coverage,
+                'coverage_uq_norm': uq_coverage_norm,
 
                 # Experiment parameters
                 'num_iter': num_iter,
-                'mc_samples': laplace_samples
+                'uq_samples': uq_samples
             })
 
 if mode in ['downstream', 'both']:
@@ -117,39 +115,37 @@ if mode in ['downstream', 'both']:
         ['joint', 'two_stage', 'infeasible'],
         [dict_downstream_joint, dict_downstream_two_stage, dict_downstream_infeasible]
     ):
-        # Get corresponding MC dropout dictionary
+        # Get corresponding UQ dictionary
         if approach_name == 'joint':
-            mc_dropout_dict = store['downstream']['percentile']['joint']
+            uq_dict = store['downstream']['percentile']['joint']
         elif approach_name == 'two_stage':
-            mc_dropout_dict = store['downstream']['percentile']['two_stage']
-        else:  # infeasible - no MC dropout for this
-            mc_dropout_dict = {k: [] for k in range(num_topics)}
+            uq_dict = store['downstream']['percentile']['two_stage']
+        else:  # infeasible - no UQ for this
+            uq_dict = {k: [] for k in range(num_topics)}
 
         for topic in range(num_topics):
-            # Parametric bootstrap estimates (across iterations)
-            bootstrap_estimates = downstream_dict[topic]
+            # Monte Carlo estimates (across iterations)
+            mc_estimates = downstream_dict[topic]
 
-            # Standard coverage calculation
-            standard_coverage = downstream_coverage[approach_name][topic] / num_iter
+            # Monte Carlo coverage calculation
+            mc_coverage = downstream_coverage[approach_name][topic] / num_iter
 
-            # MC dropout coverage calculation
-            mc_dropout_coverage = 0
+            # UQ coverage calculation
+            uq_coverage = 0
             if approach_name != 'infeasible':
-                # dropout_key = f"{approach_name}_dropout"
-                # if dropout_key in upstream_coverage:
-                mc_dropout_coverage = downstream_coverage_mc[approach_name][topic] / num_iter
+                uq_coverage = downstream_coverage_uq[approach_name][topic] / num_iter
 
-            # MC dropout coverage calculation (Normal-based intervals)
-            mc_dropout_coverage_norm = 0
+            # UQ coverage calculation (Normal-based intervals)
+            uq_coverage_norm = 0
             if approach_name != 'infeasible':
-                mc_dropout_coverage_norm = downstream_coverage_mc[approach_name + "_norm"][topic] / num_iter
+                uq_coverage_norm = downstream_coverage_uq[approach_name + "_norm"][topic] / num_iter
 
-            # Compute MC dropout statistics
-            mc_stats = compute_mc_dropout_stats(mc_dropout_dict[topic], num_iter, laplace_samples) if approach_name != 'infeasible' else {
-                'mc_mean': np.nan, 'mc_std_dev_0': np.nan, 'mc_std_dev_1': np.nan,
-                'mc_std_error_0': np.nan, 'mc_std_error_1': np.nan,
-                'mc_within_iter_mean_std': np.nan, 'mc_within_iter_std_of_std': np.nan,
-                'mc_between_iter_std': np.nan
+            # Compute UQ statistics
+            uq_stats =(uq_dict[topic], num_iter, uq_samples) if approach_name != 'infeasible' else {
+                'uq_mean': np.nan, 'uq_std_dev_0': np.nan, 'uq_std_dev_1': np.nan,
+                'uq_std_error_0': np.nan, 'uq_std_error_1': np.nan,
+                'uq_within_iter_mean_std': np.nan, 'uq_within_iter_std_of_std': np.nan,
+                'uq_between_iter_std': np.nan
             }
 
             results.append({
@@ -158,31 +154,31 @@ if mode in ['downstream', 'both']:
                 'topic': topic,
                 'true_value': beta[topic],
 
-                # Parametric Bootstrap Statistics (across iterations)
-                'bootstrap_mean': np.mean(bootstrap_estimates),
-                'bootstrap_std_dev_0': np.std(bootstrap_estimates),
-                'bootstrap_std_dev_1': np.std(bootstrap_estimates, ddof=1) if len(bootstrap_estimates) > 1 else np.nan,
-                'bootstrap_std_error_0': np.std(bootstrap_estimates) / np.sqrt(len(bootstrap_estimates)) if len(bootstrap_estimates) > 0 else np.nan,
-                'bootstrap_std_error_1': np.std(bootstrap_estimates, ddof=1) / np.sqrt(len(bootstrap_estimates)) if len(bootstrap_estimates) > 1 else np.nan,
+                # Monte Carlo Statistics (across iterations)
+                'mc_mean': np.mean(uq_estimates),
+                'mc_std_dev_0': np.std(uq_estimates),
+                'mc_std_dev_1': np.std(uq_estimates, ddof=1) if len(uq_estimates) > 1 else np.nan,
+                'mc_std_error_0': np.std(uq_estimates) / np.sqrt(len(uq_estimates)) if len(uq_estimates) > 0 else np.nan,
+                'mc_std_error_1': np.std(uq_estimates, ddof=1) / np.sqrt(len(uq_estimates)) if len(uq_estimates) > 1 else np.nan,
 
-                # MC Dropout Statistics (within and across iterations)
-                'mc_dropout_mean': mc_stats['mc_mean'],
-                'mc_dropout_std_dev_0': mc_stats['mc_std_dev_0'],
-                'mc_dropout_std_dev_1': mc_stats['mc_std_dev_1'],
-                'mc_dropout_std_error_0': mc_stats['mc_std_error_0'],
-                'mc_dropout_std_error_1': mc_stats['mc_std_error_1'],
-                'mc_dropout_within_iter_std': mc_stats['mc_within_iter_mean_std'],
-                'mc_dropout_within_iter_std_of_std': mc_stats['mc_within_iter_std_of_std'],
-                'mc_dropout_between_iter_std': mc_stats['mc_between_iter_std'],
+                # UQ Statistics (within and across iterations)
+                'uq_mean': uq_stats['uq_mean'],
+                'uq_std_dev_0': uq_stats['uq_std_dev_0'],
+                'uq_std_dev_1': uq_stats['uq_std_dev_1'],
+                'uq_std_error_0': uq_stats['uq_std_error_0'],
+                'uq_std_error_1': uq_stats['uq_std_error_1'],
+                'uq_within_iter_std': uq_stats['uq_within_iter_mean_std'],
+                'uq_within_iter_std_of_std': uq_stats['uq_within_iter_std_of_std'],
+                'uq_between_iter_std': uq_stats['uq_between_iter_std'],
 
                 # Coverage rates
-                'coverage_standard': standard_coverage,
-                'coverage_mc_dropout': mc_dropout_coverage,
-                'coverage_mc_dropout_norm': mc_dropout_coverage_norm,
+                'coverage_uq': mc_coverage,
+                'coverage_uq_dropout': uq_coverage,
+                'coverage_uq_norm': uq_coverage_norm,
 
                 # Experiment parameters
                 'num_iter': num_iter,
-                'mc_samples': laplace_samples
+                'uq_samples': uq_samples
             })
 
 summary_df = pd.DataFrame(results)
@@ -202,7 +198,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-coverages = summary_df['coverage_mc_dropout']
+coverages = summary_df['coverage_uq_dropout']
 lambda_, beta = np.array([[ 0,  0], [ 0, -0.5]]), np.array([ 0, -0.5])
 alpha = 0.05            # 95% CI
 
